@@ -57,20 +57,24 @@ import threading
 from collections import deque
 from datetime import datetime
 
-# ---------------------------------------------------------------------------
-# FFmpeg options MUST be set before importing cv2.
-# nobuffer + low_delay stop FFmpeg from queuing frames internally.
-# analyzeduration/probesize keep connection setup fast.
-# ---------------------------------------------------------------------------
+# Check if the source is an RTSP stream (not webcam/phone)
+_args = [a for a in sys.argv[1:] if not a.startswith("--")]
+_src = _args[0] if _args else "0"
+_is_rtsp = True
+
+if isinstance(_src, int) or str(_src).isdigit() or "8080" in str(_src):
+    _is_rtsp = False
+
 _TRANSPORT = "udp" if "--udp" in sys.argv else "tcp"
-os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = (
-    f"rtsp_transport;{_TRANSPORT}"
-    "|fflags;nobuffer"
-    "|flags;low_delay"
-    "|analyzeduration;0"
-    "|probesize;32"
-    "|reorder_queue_size;0"
-)
+
+if _is_rtsp:
+    os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = (
+        f"rtsp_transport;{_TRANSPORT}"
+        "|fflags;nobuffer"
+        "|flags;low_delay"
+        "|analyzeduration;100000"
+        "|probesize;32768"
+    )
 
 import cv2
 import numpy as np
@@ -181,6 +185,9 @@ class CaptureThread:
 
         if is_idx:
             self.kind = "Webcam"
+            # Clear FFmpeg options for webcams
+            if "OPENCV_FFMPEG_CAPTURE_OPTIONS" in os.environ:
+                del os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"]
             cap = cv2.VideoCapture(int(src))
             # UVC cameras: ask for MJPEG, it is far lighter than raw YUY2
             try:
@@ -189,9 +196,20 @@ class CaptureThread:
                 pass
         elif isinstance(src, str) and "8080" in src:
             self.kind = "Phone"
+            # Clear FFmpeg options for HTTP/MJPEG Phone stream to prevent nobuffer hanging
+            if "OPENCV_FFMPEG_CAPTURE_OPTIONS" in os.environ:
+                del os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"]
             cap = cv2.VideoCapture(src)
         else:
             self.kind = "RTSP"
+            # Apply low-latency options for RTSP
+            os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = (
+                f"rtsp_transport;{_TRANSPORT}"
+                "|fflags;nobuffer"
+                "|flags;low_delay"
+                "|analyzeduration;100000"
+                "|probesize;32768"
+            )
             if self.use_gst:
                 cap = cv2.VideoCapture(self._gst_pipeline(src), cv2.CAP_GSTREAMER)
                 if not cap.isOpened():
