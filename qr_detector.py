@@ -488,6 +488,7 @@ class QRPipeline:
 
         grays = []
         for f in frames:
+
             g = cv2.cvtColor(f, cv2.COLOR_BGR2GRAY) if f.ndim == 3 else f
             grays.append(g)
         if not grays:
@@ -661,4 +662,4 @@ if __name__ == "__main__":
         mc = int(sys.argv[2]) if len(sys.argv) > 2 else 25
         diagnostics(sys.argv[1], module_count=mc)
     else:
-        run_live(0)
+        run_live(0) 
